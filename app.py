@@ -7,7 +7,7 @@ import boto3
 import streamlit as st
 from PIL import Image, ImageDraw
 
-DEFAULT_CONF_THRES = 0.25
+DEFAULT_CONF_THRES = 0.75
 
 
 def get_config() -> Dict[str, str]:
