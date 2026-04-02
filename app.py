@@ -133,8 +133,8 @@ def main() -> None:
     endpoint_name = cfg["endpoint_name"]
     region = cfg["region"]
 
-    st.set_page_config(page_title="YOLO Inspection", layout="wide")
-    st.title("YOLO kiểm tra vị trí sản phẩm bằng AWS SageMaker")
+    st.set_page_config(page_title="Product Inspection", layout="wide")
+    st.title("kiểm tra vị trí sản phẩm bằng AWS SageMaker")
     st.caption(f"Suy luận thời gian thực qua SageMaker Endpoint: {endpoint_name or '[chưa cấu hình]'}")
     st.write(
         "Ứng dụng này upload ảnh lên giao diện Streamlit, "
