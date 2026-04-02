@@ -1,7 +1,7 @@
 import io
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import boto3
 import streamlit as st
@@ -137,7 +137,7 @@ def main() -> None:
     st.title("kiểm tra vị trí sản phẩm bằng AWS SageMaker")
     st.caption(f"Suy luận thời gian thực qua SageMaker Endpoint: {endpoint_name or '[chưa cấu hình]'}")
     st.write(
-        "Ứng dụng này upload ảnh lên giao diện Streamlit, "
+        "Ứng dụng này upload 1 ảnh lên giao diện Streamlit, "
         "sau đó gọi AWS SageMaker endpoint để suy luận và trả về kết quả kiểm tra OK/NG."
     )
 
@@ -152,115 +152,91 @@ def main() -> None:
         st.info("Hãy cấu hình secrets trên Streamlit Cloud trước khi chạy app.")
         st.stop()
 
-    uploaded_files = st.file_uploader(
-        "Chọn một hoặc nhiều ảnh",
+    uploaded_file = st.file_uploader(
+        "Chọn 1 ảnh",
         type=["jpg", "jpeg", "png", "bmp"],
-        accept_multiple_files=True,
+        accept_multiple_files=False,
     )
 
     conf = st.slider("Confidence threshold", 0.0, 1.0, DEFAULT_CONF_THRES, 0.05)
     show_reference = st.checkbox("Hiện vùng chuẩn", value=True)
 
-    if not uploaded_files:
-        st.info("Hãy upload ít nhất một ảnh để kiểm tra.")
+    if not uploaded_file:
+        st.info("Hãy upload 1 ảnh để kiểm tra.")
         return
 
-    results_all: List[Dict[str, Any]] = []
-
-    with st.spinner("Đang gọi SageMaker endpoint cho nhiều ảnh..."):
-        for uploaded_file in uploaded_files:
-            try:
-                result = invoke_single_image(
-                    runtime=runtime,
-                    endpoint_name=endpoint_name,
-                    uploaded_file=uploaded_file,
-                    conf=conf,
-                    show_reference=show_reference,
-                )
-                results_all.append(result)
-            except Exception as exc:
-                uploaded_file.seek(0)
-                fallback_image = Image.open(uploaded_file).convert("RGB")
-                results_all.append(
-                    {
-                        "filename": uploaded_file.name,
-                        "image_rgb": fallback_image,
-                        "image_annotated": fallback_image,
-                        "status": "ERROR",
-                        "message": str(exc),
-                        "detections": {},
-                        "missing": [],
-                        "shifted": [],
-                        "size_abnormal": [],
-                    }
-                )
-
-    st.subheader("Tổng hợp kết quả")
-    ok_count = sum(1 for x in results_all if x["status"] == "OK")
-    ng_count = sum(1 for x in results_all if x["status"] == "NG")
-    err_count = sum(1 for x in results_all if x["status"] == "ERROR")
-
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.success(f"OK: {ok_count}")
-    with col_b:
-        st.error(f"NG: {ng_count}")
-    with col_c:
-        if err_count > 0:
-            st.warning(f"ERROR: {err_count}")
-        else:
-            st.info("ERROR: 0")
-
-    for item in results_all:
-        st.markdown("---")
-        st.subheader(item["filename"])
-
-        col1, col2 = st.columns([2, 1])
-
-        with col1:
-            st.image(
-                item["image_annotated"],
-                caption=item["filename"],
-                use_container_width=True,
+    with st.spinner("Đang gọi SageMaker endpoint..."):
+        try:
+            result = invoke_single_image(
+                runtime=runtime,
+                endpoint_name=endpoint_name,
+                uploaded_file=uploaded_file,
+                conf=conf,
+                show_reference=show_reference,
             )
+        except Exception as exc:
+            uploaded_file.seek(0)
+            fallback_image = Image.open(uploaded_file).convert("RGB")
+            result = {
+                "filename": uploaded_file.name,
+                "image_rgb": fallback_image,
+                "image_annotated": fallback_image,
+                "status": "ERROR",
+                "message": str(exc),
+                "detections": {},
+                "missing": [],
+                "shifted": [],
+                "size_abnormal": [],
+            }
 
-        with col2:
-            if item["status"] == "OK":
-                st.success("OK")
-            elif item["status"] == "NG":
-                st.error("NG")
-            else:
-                st.warning("ERROR")
+    st.subheader("Kết quả kiểm tra")
 
-            st.write("**Tóm tắt:**")
-            st.write(item["message"])
+    col1, col2 = st.columns([2, 1])
 
-            st.write("**Part detect được:**")
-            if item.get("detections"):
-                for class_name, d in item["detections"].items():
-                    conf_pct = d["conf"] * 100
-                    st.write(
-                        f"- {class_name}: {conf_pct:.1f}% | "
-                        f"x1={d['x1']:.1f}, y1={d['y1']:.1f}, "
-                        f"x2={d['x2']:.1f}, y2={d['y2']:.1f}"
-                    )
-            else:
-                st.write("- Không detect được part nào")
+    with col1:
+        st.image(
+            result["image_annotated"],
+            caption=result["filename"],
+            use_container_width=True,
+        )
 
-            if item.get("missing"):
-                st.write("**Thiếu part:**")
-                for x in item["missing"]:
-                    st.write(f"- {x}")
+    with col2:
+        if result["status"] == "OK":
+            st.success("OK")
+        elif result["status"] == "NG":
+            st.error("NG")
+        else:
+            st.warning("ERROR")
 
-            if item.get("shifted"):
-                st.write("**Lệch vị trí:**")
-                for x in item["shifted"]:
-                    st.write(f"- {x}")
+        st.write("**Tóm tắt:**")
+        st.write(result["message"])
 
-            if item.get("size_abnormal"):
-                st.write("**Kích thước box bất thường:**")
-                for x in item["size_abnormal"]:
-                    st.write(f"- {x}")
+        st.write("**Part detect được:**")
+        if result.get("detections"):
+            for class_name, d in result["detections"].items():
+                conf_pct = d["conf"] * 100
+                st.write(
+                    f"- {class_name}: {conf_pct:.1f}% | "
+                    f"x1={d['x1']:.1f}, y1={d['y1']:.1f}, "
+                    f"x2={d['x2']:.1f}, y2={d['y2']:.1f}"
+                )
+        else:
+            st.write("- Không detect được part nào")
+
+        if result.get("missing"):
+            st.write("**Thiếu part:**")
+            for x in result["missing"]:
+                st.write(f"- {x}")
+
+        if result.get("shifted"):
+            st.write("**Lệch vị trí:**")
+            for x in result["shifted"]:
+                st.write(f"- {x}")
+
+        if result.get("size_abnormal"):
+            st.write("**Kích thước box bất thường:**")
+            for x in result["size_abnormal"]:
+                st.write(f"- {x}")
 
 
 if __name__ == "__main__":
